@@ -5,7 +5,7 @@ from pathlib import Path
 
 class CalcResult(ctypes.Structure):
     _fields_ = [
-        ("sum", ctypes.c_uint64),
+        ("sum", ctypes.c_char * 128),
         ("min", ctypes.c_uint32),
         ("max", ctypes.c_uint32),
     ]
@@ -48,7 +48,7 @@ def main(argv: list[str]) -> int:
         print(f"error: {exc}")
         return 1
 
-    print(f"sum={result.sum}")
+    print(f"sum={result.sum.decode('ascii')}")
     print(f"min={result.min}")
     print(f"max={result.max}")
     return 0

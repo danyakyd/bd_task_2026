@@ -4,9 +4,62 @@
 
 #define U32_SIZE 4 //4 байта
 #define BUFFER_SIZE (64u * 1024u * 1024u) //64 мб
+#define BIG_BASE 1000000000u //по 9 цифр для длинной арифметики суммы
+#define BIG_CAP 64 //макс кол-во блоков  в BigInt
 
 typedef struct {
-    uint64_t sum; //т.к. uint32+uint32
+    uint32_t digits[BIG_CAP];
+    size_t len;
+} BigInt;
+
+void bigint_init(BigInt *num) {
+    num->digits[0] = 0;
+    num->len = 1;
+}
+
+int bigint_add_u32(BigInt *num, uint32_t value) {
+    uint64_t carry = value;
+    size_t i = 0;
+
+    while (carry > 0) {
+        if (i == num->len) {
+            if (num->len == BIG_CAP) {
+                return 1;
+            }
+            num->digits[num->len] = 0;
+            num->len++;
+        }
+
+        uint64_t current = (uint64_t)num->digits[i] + carry;
+        num->digits[i] = (uint32_t)(current % BIG_BASE);
+        carry = current / BIG_BASE;
+        i++;
+    }
+
+    return 0;
+}
+
+int bigint_to_string(const BigInt *num, char *buffer, size_t buffer_size) {
+    int written = snprintf(buffer, buffer_size, "%u", num->digits[num->len - 1]); //печатаем самый старший блок
+    if (written < 0 || (size_t)written >= buffer_size) {
+        return 1;
+    }
+
+    size_t used = (size_t)written;
+
+    for (size_t i = num->len - 1; i-- > 0;) {
+        written = snprintf(buffer + used, buffer_size - used, "%09u", num->digits[i]); //дополняем нестаршие блоки нулями слева, если меньше 9 цифр
+        if (written < 0 || (size_t)written >= buffer_size - used) { //поместились в буфер?
+            return 1;
+        }
+        used += (size_t)written;
+    }
+
+    return 0;
+}
+
+typedef struct {
+    char sum[128];
     uint32_t min;
     uint32_t max;
 } CalcResult;
@@ -45,7 +98,7 @@ int calc_file_stat(const char *path, CalcResult *out) {
         return 7;
     }
 
-    uint64_t sum = 0;
+    BigInt sum; bigint_init(&sum);
     uint32_t min_value = UINT32_MAX;
     uint32_t max_value = 0;
 
@@ -60,7 +113,8 @@ int calc_file_stat(const char *path, CalcResult *out) {
                     ((uint32_t)buffer[i + 2] << 8) |
                     ((uint32_t)buffer[i + 3]);
 
-                sum += value;
+                bigint_add_u32(&sum, value);
+
                 if (value < min_value) {
                     min_value = value;
                 }
@@ -83,7 +137,7 @@ int calc_file_stat(const char *path, CalcResult *out) {
     free(buffer);
     fclose(file);
 
-    out->sum = sum;
+    bigint_to_string(&sum, out->sum, sizeof(out->sum));
     out->min = min_value;
     out->max = max_value;
     return 0;
